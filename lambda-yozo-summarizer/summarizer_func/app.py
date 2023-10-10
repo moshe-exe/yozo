@@ -3,7 +3,23 @@ import requests
 import os
 
 
-def get_telegram_text(event):
+def wrap_message(message):
+    DEBUG = True
+    try:
+        sender = message.get('from').get('first_name')
+        text = message.get('text')
+        chat_id = message.get('chat').get('id')
+        message_id = message.get('message_id')
+        wrapped_message = f"{sender}: {text}\n"
+        if DEBUG:
+            wrapped_message += f"CHAT_ID={chat_id} MSG_ID={message_id}"
+        return wrapped_message, None
+
+    except Exception as e:
+        return None, str(e)
+
+
+def get_message(event):
     if 'body' not in event:
         return None, "No message body"
 
@@ -12,17 +28,25 @@ def get_telegram_text(event):
     if 'message' not in event_body:
         return None, "No message"
 
-    if 'text' not in event_body['message']:
-        return None, "No message text"
+    return wrap_message(event_body['message'])
 
-    return event_body['message']['text'], None
+
+def push_to_queue(msg, queue_url):
+    if not queue_url:
+        return None, "No queue url"
+
+    return queue_url, None
 
 
 def lambda_handler(event, context):
-    msg_text, error = get_telegram_text(event)
+    msg_text, msg_error = get_message(event)
+    queue_response, q_error = push_to_queue(msg_text, os.environ['QUEUE_URL'])
 
-    if error:
-        msg_text = f"Error: {error}"
+    if msg_error:
+        msg_text = f"MESSAGE Error: {msg_error}"
+
+    if q_error:
+        msg_text = f"QUEUE Error: {q_error}"
 
     chat_id = os.environ['CHANNEL_ID']
     telegram_token = os.environ['BOT_TOKEN']
