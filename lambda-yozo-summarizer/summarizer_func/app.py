@@ -14,6 +14,11 @@ ACCEPT = 'application/json'
 CONTENT_TYPE = 'application/json'
 bedrock = boto3.client('bedrock-runtime')
 
+CHAT_ID = os.environ['CHANNEL_ID']
+TELEGRAM_TOKEN = os.environ['BOT_TOKEN']
+
+TELEGRAM_BOT_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+
 
 def wrap_message(message):
     try:
@@ -78,7 +83,7 @@ def bedrock_inference(prompt):
         body = json.dumps({
             "prompt": prompt,
             "max_tokens": 100,
-            "temperature": 0.2,
+            "temperature": 0.15,
             "p": 0.99,
             "k": 0,
             "return_likelihoods": "NONE"
@@ -144,39 +149,28 @@ def summarize_batch():
         return "Error: " + str(e)
 
 
+def send_telegram_message(chat_id, text, telegram_bot_url):
+    params = {'chat_id': chat_id, 'text': text}
+    requests.post(f"{telegram_bot_url}", data=params).json()
+
+
 def lambda_handler(event, context):
     aprox_queue_size = get_aprox_queue_size()
     new_message = get_message(event)
     push_q_response = push_to_queue(new_message)
 
-    telegram_response = ""
     pretty_debug_str = json.dumps({
         'aprox_queue_size': aprox_queue_size,
         'new_message': new_message,
         'push_queue_status': push_q_response,
     }, indent=4)
 
-    CHAT_ID = os.environ['CHANNEL_ID']
-    TELEGRAM_TOKEN = os.environ['BOT_TOKEN']
-
-    api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/"
-
-    params = {'chat_id': CHAT_ID, 'text': pretty_debug_str}
-    res = requests.post(f"{api_url}sendMessage", data=params).json()
+    send_telegram_message(CHAT_ID, pretty_debug_str, TELEGRAM_BOT_URL)
 
     if aprox_queue_size >= BATCH_SIZE:
         summary, conversation = summarize_batch()
-        telegram_response = f"SUM: {summary}" + "\n"
+        telegram_response = f"SUMMARY:\n{summary}" + "\n\n"
 
-    CHAT_ID = os.environ['CHANNEL_ID']
-    TELEGRAM_TOKEN = os.environ['BOT_TOKEN']
+        send_telegram_message(CHAT_ID, telegram_response, TELEGRAM_BOT_URL)
 
-    api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/"
-
-    params = {'chat_id': CHAT_ID, 'text': telegram_response}
-    res = requests.post(f"{api_url}sendMessage", data=params).json()
-
-    return {
-        "statusCode": 200,
-        "body": json.dumps(res),
-    }
+    return {"statusCode": 200}
