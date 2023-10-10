@@ -11,6 +11,13 @@ Globals:
     Timeout: 3
 
 Resources:
+  YozoSQS:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: MessagesQueue.fifo
+      VisibilityTimeout: 300
+      MessageRetentionPeriod: 86400
+      FifoQueue: true
   SummarizeFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
@@ -22,6 +29,7 @@ Resources:
           BOT_TOKEN: "{{resolve:secretsmanager:yozo-my-bot-token:SecretString}}"
           CHANNEL_ID: "{{resolve:secretsmanager:yozo-my-channel-id:SecretString}}"
           GROUP_ID: "{{resolve:secretsmanager:yozo-my-group-id:SecretString}}"
+          QUEUE_URL: !GetAtt YozoSQS.Arn
       Architectures:
         - x86_64
       Events:
