@@ -4,7 +4,7 @@ version = 0.1
 
 [default]
 [default.global.parameters]
-stack_name = "lambda-yozo-summarizer"
+stack_name = "yozo-chat"
 
 [default.build.parameters]
 cached = true
@@ -17,7 +17,7 @@ lint = true
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
-s3_prefix = "lambda-yozo-summarizer"
+s3_prefix = "yozo-chat"
 region = "us-east-1"
 profile = "personal"
 image_repositories = []
