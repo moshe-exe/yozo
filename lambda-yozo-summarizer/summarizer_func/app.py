@@ -3,6 +3,8 @@ import requests
 import os
 import boto3
 
+queue_url = os.environ['QUEUE_URL']
+
 
 def wrap_message(message):
     try:
@@ -30,39 +32,47 @@ def get_message(event):
     return wrap_message(event_body['message'])
 
 
-def push_to_queue(message, queue_url):
+def push_to_queue(message):
     if not queue_url:
         return None, "No queue url"
 
-    sqs = boto3.client('sqs')
-
-    return queue_url, None
     msg_dedup_id = f"{message['chat_id']}/{message['message_id']}"
-    response = sqs.send_message(
-            QueueUrl=queue_url,
-            MessageBody=json.dumps(message),
-            MessageGroupId='DT2_MESSAGES',
-            MessageDeduplicationId=msg_dedup_id
-        )
+    try:
+        sqs = boto3.client('sqs')
+        response = sqs.send_message(
+                QueueUrl=queue_url,
+                MessageBody=json.dumps(message),
+                MessageGroupId='DT2_MESSAGES',
+                MessageDeduplicationId=msg_dedup_id
+            )
+    except Exception as e:
+        return None, str(e)
+
     return response, None
 
 
 def lambda_handler(event, context):
-    msg_text, msg_error = get_message(event)
-    queue_response, q_error = push_to_queue(msg_text, os.environ['QUEUE_URL'])
+    processed_msg, msg_error = get_message(event)
+    queue_response, q_error = push_to_queue(processed_msg)
 
     if msg_error:
-        msg_text = f"MESSAGE Error: {msg_error}"
+        processed_msg = f"MESSAGE Error: {msg_error}"
 
     if q_error:
-        msg_text = f"QUEUE Error: {q_error}"
+        queue_response = f"QUEUE Error: {q_error}"
+
+    debug_dict = {
+        'queue_msg': processed_msg,
+        'queue_response': queue_response
+    }
 
     chat_id = os.environ['CHANNEL_ID']
     telegram_token = os.environ['BOT_TOKEN']
 
     api_url = f"https://api.telegram.org/bot{telegram_token}/"
-
-    params = {'chat_id': chat_id, 'text': str(msg_text)}
+    
+    pretty_debug_str = json.dumps(debug_dict, indent=4)
+    params = {'chat_id': chat_id, 'text': pretty_debug_str}
     res = requests.post(f"{api_url}sendMessage", data=params).json()
 
     return {
