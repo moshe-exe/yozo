@@ -4,6 +4,7 @@ import os
 import boto3
 
 queue_url = os.environ['QUEUE_URL']
+sqs = boto3.client('sqs')
 
 
 def wrap_message(message):
@@ -38,7 +39,6 @@ def push_to_queue(message):
 
     msg_dedup_id = f"{message['chat_id']}/{message['message_id']}"
     try:
-        sqs = boto3.client('sqs')
         response = sqs.send_message(
                 QueueUrl=queue_url,
                 MessageBody=json.dumps(message),
@@ -51,9 +51,24 @@ def push_to_queue(message):
     return response, None
 
 
+def poke_queue_size():
+    try:
+        response = sqs.get_queue_attributes(
+            QueueUrl=queue_url,
+            AttributeNames=['ApproximateNumberOfMessages']
+        )
+        approximate_num_messages = int(
+            response['Attributes']['ApproximateNumberOfMessages']
+            )
+        return approximate_num_messages
+    except Exception as e:
+        return str(e)
+
+
 def lambda_handler(event, context):
     processed_msg, msg_error = get_message(event)
     queue_response, q_error = push_to_queue(processed_msg)
+    queue_size = poke_queue_size()
 
     if msg_error:
         processed_msg = f"MESSAGE Error: {msg_error}"
@@ -63,14 +78,15 @@ def lambda_handler(event, context):
 
     debug_dict = {
         'queue_msg': processed_msg,
-        'queue_response': queue_response
+        'queue_response': queue_response,
+        'poke_queue_size': queue_size
     }
 
     chat_id = os.environ['CHANNEL_ID']
     telegram_token = os.environ['BOT_TOKEN']
 
     api_url = f"https://api.telegram.org/bot{telegram_token}/"
-    
+
     pretty_debug_str = json.dumps(debug_dict, indent=4)
     params = {'chat_id': chat_id, 'text': pretty_debug_str}
     res = requests.post(f"{api_url}sendMessage", data=params).json()

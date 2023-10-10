@@ -36,6 +36,9 @@ Resources:
               - Effect: Allow
                 Action: sqs:SendMessage
                 Resource: !GetAtt YozoSQS.Arn
+              - Effect: Allow
+                Action: sqs:GetQueueAttributes
+                Resource: !GetAtt YozoSQS.Arn
   SummarizeFunction:
     Type: AWS::Serverless::Function
     Properties:
