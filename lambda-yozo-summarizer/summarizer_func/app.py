@@ -5,9 +5,14 @@ import boto3
 
 QUEUE_URL = os.environ['QUEUE_URL']
 GROUP_ID = os.environ['GROUP_ID']
+BATCH_SIZE = 8  # int(os.environ['BATCH_SIZE'])
+BATCH_SIZE_ITER = 8
 sqs = boto3.client('sqs')
-BATCH_SIZE = 5  # int(os.environ['BATCH_SIZE'])
-BATCH_SIZE_ITER = 5
+
+MODEL_ID = 'cohere.command-text-v14'
+ACCEPT = 'application/json'
+CONTENT_TYPE = 'application/json'
+bedrock = boto3.client('bedrock-runtime')
 
 
 def wrap_message(message):
@@ -49,7 +54,7 @@ def push_to_queue(message):
                 MessageDeduplicationId=msg_dedup_id
             )
         httpStatusCode = response['ResponseMetadata']['HTTPStatusCode']
-        return {'HTTPStatusCode': httpStatusCode}
+        return httpStatusCode
     except Exception as e:
         return "Error: " + str(e)
 
@@ -68,64 +73,106 @@ def get_aprox_queue_size():
         return "Error: " + str(e)
 
 
+def bedrock_inference(prompt):
+    try:
+        body = json.dumps({
+            "prompt": prompt,
+            "max_tokens": 40,
+            "temperature": 0.2,
+            "p": 0.99,
+            "k": 0,
+            "return_likelihoods": "NONE"
+        })
+
+        response = bedrock.invoke_model(
+            body=body,
+            modelId=MODEL_ID,
+            accept=ACCEPT,
+            contentType=CONTENT_TYPE
+            )
+
+        response_body = json.loads(response.get('body').read())
+        return response_body.get('generations')[0].get('text')
+
+    except Exception as e:
+        return "Error: " + str(e)
+
+
+def bedrock_summarize_chat(conversation):
+    prompt = f"""
+        Write a summary of this chat conversation.
+Each message has the following structure "SENDER: MESSAGE_CONTENT".
+Write 50 words or less. Write your summary in spanish.
+```
+{conversation}
+```
+    """
+    return bedrock_inference(prompt)
+
+
 def summarize_batch():
     try:
         response = sqs.receive_message(
             QueueUrl=QUEUE_URL,
             AttributeNames=['All'],
-            MaxNumberOfMessages=BATCH_SIZE_ITER,
+            MaxNumberOfMessages=BATCH_SIZE_ITER + 1,
             MessageAttributeNames=['All'],
-            VisibilityTimeout=20,
+            VisibilityTimeout=40,
             WaitTimeSeconds=0
         )
 
         if 'Messages' not in response:
-            return "No messages received."
+            return f"No messages received. Response: {response}"
 
         conversation = ""
         for message in response['Messages']:
             tel_msg = json.loads(message['Body'])
-            id = tel_msg['message_id']
+            _ = tel_msg['message_id']
             sender = tel_msg['sender']
             text = tel_msg['text']
-            conversation += f"({id}) {sender}: {text}\n"
+            conversation += f"{sender}: {text}\n"
 
+            bedrock_summary = bedrock_summarize_chat(conversation)
             sqs.delete_message(
                 QueueUrl=QUEUE_URL,
                 ReceiptHandle=message['ReceiptHandle']
             )
 
-        return conversation
+        return bedrock_summary, conversation
 
     except Exception as e:
         return "Error: " + str(e)
 
 
 def lambda_handler(event, context):
-    processed_msg = get_message(event)
-    queue_response = push_to_queue(processed_msg)
     aprox_queue_size = get_aprox_queue_size()
+    new_message = get_message(event)
+    push_q_response = push_to_queue(new_message)
 
-    debug_dict = {
-        'queue_msg': processed_msg,
-        'queue_response': queue_response,
-        'aprox_queue_size': aprox_queue_size
-    }
+    telegram_response = ""
+    pretty_debug_str = json.dumps({
+        'aprox_queue_size': aprox_queue_size,
+        'new_msg': new_message,
+        'push_q_response': push_q_response,
+    }, indent=4)
 
     if aprox_queue_size >= BATCH_SIZE:
-        debug_dict['batch_summarize'] = summarize_batch()
+        summary, conversation = summarize_batch()
+        telegram_response += f"SUM: {summary}" + "\n"
+        telegram_response += f"CON: {conversation}" + "\n"
 
-    chat_id = os.environ['CHANNEL_ID']
-    telegram_token = os.environ['BOT_TOKEN']
+    telegram_response += pretty_debug_str
 
-    api_url = f"https://api.telegram.org/bot{telegram_token}/"
+    CHAT_ID = os.environ['CHANNEL_ID']
+    TELEGRAM_TOKEN = os.environ['BOT_TOKEN']
 
-    pretty_debug_str = json.dumps(debug_dict, indent=4)
-    params = {'chat_id': chat_id, 'text': pretty_debug_str}
+    api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/"
+
+    params = {'chat_id': CHAT_ID, 'text': telegram_response}
     res = requests.post(f"{api_url}sendMessage", data=params).json()
 
     if not res.get('ok'):
-        params = {'chat_id': chat_id, 'text': json.dumps(res)}
+        params = {'chat_id': CHAT_ID, 'text': json.dumps(res)}
         requests.post(f"{api_url}sendMessage", data=params).json()
 
     return {
