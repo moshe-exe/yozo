@@ -77,7 +77,7 @@ def bedrock_inference(prompt):
     try:
         body = json.dumps({
             "prompt": prompt,
-            "max_tokens": 40,
+            "max_tokens": 100,
             "temperature": 0.2,
             "p": 0.99,
             "k": 0,
@@ -152,16 +152,21 @@ def lambda_handler(event, context):
     telegram_response = ""
     pretty_debug_str = json.dumps({
         'aprox_queue_size': aprox_queue_size,
-        'new_msg': new_message,
-        'push_q_response': push_q_response,
+        'new_message': new_message,
+        'push_queue_status': push_q_response,
     }, indent=4)
+
+    CHAT_ID = os.environ['CHANNEL_ID']
+    TELEGRAM_TOKEN = os.environ['BOT_TOKEN']
+
+    api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/"
+
+    params = {'chat_id': CHAT_ID, 'text': pretty_debug_str}
+    res = requests.post(f"{api_url}sendMessage", data=params).json()
 
     if aprox_queue_size >= BATCH_SIZE:
         summary, conversation = summarize_batch()
-        telegram_response += f"SUM: {summary}" + "\n"
-        telegram_response += f"CON: {conversation}" + "\n"
-
-    telegram_response += pretty_debug_str
+        telegram_response = f"SUM: {summary}" + "\n"
 
     CHAT_ID = os.environ['CHANNEL_ID']
     TELEGRAM_TOKEN = os.environ['BOT_TOKEN']
@@ -170,10 +175,6 @@ def lambda_handler(event, context):
 
     params = {'chat_id': CHAT_ID, 'text': telegram_response}
     res = requests.post(f"{api_url}sendMessage", data=params).json()
-
-    if not res.get('ok'):
-        params = {'chat_id': CHAT_ID, 'text': json.dumps(res)}
-        requests.post(f"{api_url}sendMessage", data=params).json()
 
     return {
         "statusCode": 200,
