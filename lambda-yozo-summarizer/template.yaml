@@ -18,10 +18,28 @@ Resources:
       VisibilityTimeout: 300
       MessageRetentionPeriod: 86400
       FifoQueue: true
-  SummarizeFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+  SummarizeFunctionRole:
+    Type: AWS::IAM::Role
     Properties:
-      CodeUri: summarizer_func/ #edited here, also edited folder name
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaSQSPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt YozoSQS.Arn
+  SummarizeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: summarizer_func/
       Handler: app.lambda_handler
       Runtime: python3.10
       Environment:
@@ -29,15 +47,16 @@ Resources:
           BOT_TOKEN: "{{resolve:secretsmanager:yozo-my-bot-token:SecretString}}"
           CHANNEL_ID: "{{resolve:secretsmanager:yozo-my-channel-id:SecretString}}"
           GROUP_ID: "{{resolve:secretsmanager:yozo-my-group-id:SecretString}}"
-          QUEUE_URL: !GetAtt YozoSQS.Arn
+          QUEUE_URL: !GetAtt YozoSQS.QueueUrl
       Architectures:
         - x86_64
       Events:
         Summarizer:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Type: Api
           Properties:
             Path: /summary
             Method: post
+      Role: !GetAtt SummarizeFunctionRole.Arn
 
 Outputs:
   # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
