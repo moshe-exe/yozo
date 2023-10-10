@@ -51,6 +51,7 @@ Resources:
           CHANNEL_ID: "{{resolve:secretsmanager:yozo-my-channel-id:SecretString}}"
           GROUP_ID: "{{resolve:secretsmanager:yozo-my-group-id:SecretString}}"
           QUEUE_URL: !GetAtt YozoSQS.QueueUrl
+          BATCH_SIZE: "10"
       Architectures:
         - x86_64
       Events:
