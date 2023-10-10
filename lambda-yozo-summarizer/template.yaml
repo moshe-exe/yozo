@@ -39,6 +39,9 @@ Resources:
               - Effect: Allow
                 Action: sqs:GetQueueAttributes
                 Resource: !GetAtt YozoSQS.Arn
+              - Effect: Allow
+                Action: sqs:ReceiveMessage
+                Resource: !GetAtt YozoSQS.Arn
   SummarizeFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -51,7 +54,7 @@ Resources:
           CHANNEL_ID: "{{resolve:secretsmanager:yozo-my-channel-id:SecretString}}"
           GROUP_ID: "{{resolve:secretsmanager:yozo-my-group-id:SecretString}}"
           QUEUE_URL: !GetAtt YozoSQS.QueueUrl
-          BATCH_SIZE: "10"
+          BATCH_SIZE: "12"
       Architectures:
         - x86_64
       Events:

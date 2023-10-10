@@ -5,6 +5,7 @@ import boto3
 
 queue_url = os.environ['QUEUE_URL']
 sqs = boto3.client('sqs')
+BATCH_SIZE = int(os.environ['BATCH_SIZE'])
 
 
 def wrap_message(message):
@@ -64,6 +65,22 @@ def get_aprox_queue_size():
         return str(e)
 
 
+def summarize_batch():
+    try:
+        response = sqs.receive_message(
+            QueueUrl=queue_url,
+            AttributeNames=['All'],
+            MaxNumberOfMessages=BATCH_SIZE,
+            MessageAttributeNames=['All'],
+            VisibilityTimeout=31,
+            WaitTimeSeconds=0
+        )
+
+        return response
+    except Exception as e:
+        return str(e)
+
+
 def lambda_handler(event, context):
     processed_msg = get_message(event)
     queue_response = push_to_queue(processed_msg)
@@ -74,6 +91,9 @@ def lambda_handler(event, context):
         'queue_response': queue_response,
         'aprox_queue_size': aprox_queue_size
     }
+
+    if aprox_queue_size >= BATCH_SIZE:
+        debug_dict['batch_summarize'] = summarize_batch()
 
     chat_id = os.environ['CHANNEL_ID']
     telegram_token = os.environ['BOT_TOKEN']
