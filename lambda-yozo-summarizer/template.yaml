@@ -17,6 +17,11 @@ Resources:
       CodeUri: summarizer_func/ #edited here, also edited folder name
       Handler: app.lambda_handler
       Runtime: python3.10
+      Environment:
+        Variables:
+          BOT_TOKEN: "{{resolve:secretsmanager:yozo-my-bot-token:SecretString}}"
+          CHANNEL_ID: "{{resolve:secretsmanager:yozo-my-channel-id:SecretString}}"
+          GROUP_ID: "{{resolve:secretsmanager:yozo-my-group-id:SecretString}}"
       Architectures:
         - x86_64
       Events:
