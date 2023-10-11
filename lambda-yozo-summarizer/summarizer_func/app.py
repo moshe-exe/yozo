@@ -5,8 +5,8 @@ import boto3
 
 QUEUE_URL = os.environ['QUEUE_URL']
 GROUP_ID = os.environ['GROUP_ID']
-BATCH_SIZE = 8  # int(os.environ['BATCH_SIZE'])
-BATCH_SIZE_ITER = 8
+BATCH_SIZE = 9
+BATCH_SIZE_ITER = 10
 sqs = boto3.client('sqs')
 
 MODEL_ID = 'cohere.command-text-v14'
@@ -82,7 +82,7 @@ def bedrock_inference(prompt):
     try:
         body = json.dumps({
             "prompt": prompt,
-            "max_tokens": 100,
+            "max_tokens": 150,
             "temperature": 0.15,
             "p": 0.99,
             "k": 0,
@@ -107,7 +107,7 @@ def bedrock_summarize_chat(conversation):
     prompt = f"""
         Write a summary of this chat conversation.
 Each message has the following structure "SENDER: MESSAGE_CONTENT".
-Write 50 words or less. Write your summary in spanish.
+Write 60 words or less. Write your summary in spanish.
 ```
 {conversation}
 ```
@@ -120,7 +120,7 @@ def summarize_batch():
         response = sqs.receive_message(
             QueueUrl=QUEUE_URL,
             AttributeNames=['All'],
-            MaxNumberOfMessages=BATCH_SIZE_ITER + 1,
+            MaxNumberOfMessages=BATCH_SIZE + 1,
             MessageAttributeNames=['All'],
             VisibilityTimeout=40,
             WaitTimeSeconds=0
@@ -163,13 +163,13 @@ def lambda_handler(event, context):
     new_message = get_message(event)
     push_q_response = push_to_queue(new_message)
 
-    pretty_debug_str = json.dumps({
+    _ = json.dumps({
         'aprox_queue_size': aprox_queue_size,
         'new_message': new_message,
         'push_queue_status': push_q_response,
     }, indent=4)
 
-    send_telegram_message(CHANNEL_ID, pretty_debug_str, TELEGRAM_BOT_URL)
+    # send_telegram_message(CHANNEL_ID, pretty_debug_str, TELEGRAM_BOT_URL)
 
     if aprox_queue_size >= BATCH_SIZE:
         summary, first_id = summarize_batch()
