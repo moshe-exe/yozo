@@ -14,9 +14,9 @@ ACCEPT = 'application/json'
 CONTENT_TYPE = 'application/json'
 bedrock = boto3.client('bedrock-runtime')
 
-CHAT_ID = os.environ['CHANNEL_ID']
+CHANNEL_ID = os.environ['CHANNEL_ID']
 TELEGRAM_TOKEN = os.environ['BOT_TOKEN']
-
+GROUP_ID = os.environ['GROUP_ID']
 TELEGRAM_BOT_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
 
@@ -130,12 +130,16 @@ def summarize_batch():
             return f"No messages received. Response: {response}"
 
         conversation = ""
+        first_message_id = None
         for message in response['Messages']:
             tel_msg = json.loads(message['Body'])
-            _ = tel_msg['message_id']
+            id = tel_msg['message_id']
             sender = tel_msg['sender']
             text = tel_msg['text']
             conversation += f"{sender}: {text}\n"
+
+            if first_message_id is None:
+                first_message_id = id
 
             bedrock_summary = bedrock_summarize_chat(conversation)
             sqs.delete_message(
@@ -143,7 +147,7 @@ def summarize_batch():
                 ReceiptHandle=message['ReceiptHandle']
             )
 
-        return bedrock_summary, conversation
+        return bedrock_summary, first_message_id
 
     except Exception as e:
         return "Error: " + str(e)
@@ -165,12 +169,12 @@ def lambda_handler(event, context):
         'push_queue_status': push_q_response,
     }, indent=4)
 
-    send_telegram_message(CHAT_ID, pretty_debug_str, TELEGRAM_BOT_URL)
+    send_telegram_message(CHANNEL_ID, pretty_debug_str, TELEGRAM_BOT_URL)
 
     if aprox_queue_size >= BATCH_SIZE:
-        summary, conversation = summarize_batch()
-        telegram_response = f"SUMMARY:\n{summary}" + "\n\n"
-
-        send_telegram_message(CHAT_ID, telegram_response, TELEGRAM_BOT_URL)
+        summary, first_id = summarize_batch()
+        telegram_response = f"{summary}\n\n"
+        telegram_response += f"LINK: https://t.me/c/1588093017/{first_id}"
+        send_telegram_message(CHANNEL_ID, telegram_response, TELEGRAM_BOT_URL)
 
     return {"statusCode": 200}
